@@ -2,52 +2,36 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>VI Network Planner - Bihar Circle</title>
+    <title>VI Network Planner Pro - Bihar</title>
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
     <style>
-        :root {
-            --vi-red: #e31837;
-            --vi-yellow: #ffcc00;
-        }
-        body { font-family: 'Segoe UI', Arial, sans-serif; margin: 0; background: #f8f9fa; display: flex; flex-direction: column; height: 100vh; }
-        .header { background: white; padding: 15px 25px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); z-index: 1000; }
-        h2 { margin: 0 0 15px 0; color: var(--vi-red); display: flex; align-items: center; gap: 10px; }
-        .controls { display: flex; gap: 20px; align-items: flex-end; flex-wrap: wrap; }
-        .control-group { display: flex; flex-direction: column; gap: 5px; }
-        label { font-size: 0.85rem; font-weight: bold; color: #555; }
-        input[type="file"], input[type="text"] { padding: 8px; border: 1px solid #ccc; border-radius: 4px; }
-        button { padding: 9px 18px; border: none; border-radius: 4px; cursor: pointer; font-weight: bold; transition: 0.2s; }
-        .btn-search { background: var(--vi-red); color: white; }
-        .btn-export { background: #007bff; color: white; }
-        .btn-search:hover, .btn-export:hover { opacity: 0.9; }
+        :root { --vi-red: #e31837; }
+        body { font-family: 'Segoe UI', sans-serif; margin: 0; display: flex; flex-direction: column; height: 100vh; }
+        .header { background: white; padding: 15px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); z-index: 1000; }
+        .controls { display: flex; gap: 15px; align-items: flex-end; flex-wrap: wrap; }
         #map { flex-grow: 1; width: 100%; }
-        .info-bar { background: #fff3f3; padding: 8px 25px; font-size: 0.85rem; color: #666; border-bottom: 1px solid #eee; }
-        .legend { background: white; padding: 10px; border-radius: 4px; border: 1px solid #ccc; line-height: 1.5; font-size: 0.75rem; }
+        button { padding: 8px 15px; border: none; border-radius: 4px; cursor: pointer; font-weight: bold; }
+        .btn-kml { background: #0F9D58; color: white; }
+        .btn-search { background: var(--vi-red); color: white; }
+        .info { font-size: 0.8rem; color: #666; margin-top: 5px; }
     </style>
 </head>
 <body>
 
 <div class="header">
-    <h2>📡 VI Network Planning Tool</h2>
+    <h2 style="margin:0 0 10px 0; color:var(--vi-red);">📡 VI Network Planner + Google Earth Export</h2>
     <div class="controls">
-        <div class="control-group">
-            <label>1. Upload Master Site Data</label>
+        <div>
+            <label style="display:block; font-size:0.8rem;">Upload Excel</label>
             <input type="file" id="uploadExcel" accept=".xlsx, .xls">
         </div>
-        <div class="control-group">
-            <label>2. Find Site ID</label>
-            <div style="display: flex; gap: 5px;">
-                <input type="text" id="siteSearch" placeholder="e.g. PAT1234">
-                <button class="btn-search" onclick="searchSite()">Search</button>
-            </div>
+        <div style="display:flex; gap:5px;">
+            <input type="text" id="siteSearch" placeholder="Site ID...">
+            <button class="btn-search" onclick="searchSite()">Find</button>
         </div>
-        <button class="btn-export" onclick="exportDistanceReport()">Export Distance Report</button>
+        <button class="btn-kml" onclick="exportKML()">Export to KML (Google Earth)</button>
     </div>
-</div>
-
-<div class="info-bar">
-    💡 <b>Bihar Planning Tip:</b> Double-click on map to find nearest site. Distance logic based on 2G (2.5km), 4G 1800 (2.3km), 4G 2100 (2.0km), 4G 2500 (1.5km), 5G 3300 (1.0km).
+    <div class="info">Filters in top-right help manage technology overlap.</div>
 </div>
 
 <div id="map"></div>
@@ -56,20 +40,105 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 
 <script>
-    // Initialize Map on Bihar/Patna coordinates
-    var map = L.map('map', { doubleClickZoom: false }).setView([25.5941, 85.1376], 11);
-    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-        attribution: '© OpenStreetMap'
-    }).addTo(map);
+    var map = L.map('map', { doubleClickZoom: false }).setView([25.5941, 85.1376], 10);
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(map);
 
     var allMarkers = {};
     var siteDataList = [];
-    var sectorLayers = L.layerGroup().addTo(map);
+    var techLayers = {
+        "2G": L.layerGroup().addTo(map),
+        "4G": L.layerGroup().addTo(map),
+        "5G": L.layerGroup().addTo(map)
+    };
 
-    // Final Coverage Concepts as defined
-    const bandSettings = {
-        "2G-1800": { color: '#2c3e50', radius: 2500, label: '2G 1800' },
-        "1800":    { color: '#3498db', radius: 2300, label: '4G 1800' },
-        "2100":    { color: '#f39c12', radius: 2000, label: '4G 2100' },
-        "2500":    { color: '#27ae60', radius: 1500, label: '4G 2500' },
-        "3300":
+    L.control.layers(null, techLayers, { collapsed: false }).addTo(map);
+
+    const config = {
+        "2G": { radius: 2500, color: '#7f8c8d' }, // Grey
+        "4G": { radius: 2300, color: '#3498db' }, // Blue
+        "5G": { radius: 1000, color: '#e74c3c' }  // Red
+    };
+
+    document.getElementById('uploadExcel').addEventListener('change', function(e) {
+        var reader = new FileReader();
+        reader.onload = function(e) {
+            var data = new Uint8Array(e.target.result);
+            var workbook = XLSX.read(data, {type: 'array'});
+            siteDataList = XLSX.utils.sheet_to_json(workbook.Sheets[workbook.SheetNames[0]]);
+            processSites();
+        };
+        reader.readAsArrayBuffer(e.target.files[0]);
+    });
+
+    function processSites() {
+        Object.values(techLayers).forEach(layer => layer.clearLayers());
+        allMarkers = {};
+
+        siteDataList.forEach(row => {
+            const id = row.Site_ID.toString().toUpperCase();
+            const lat = parseFloat(row.Lat);
+            const lon = parseFloat(row.Long);
+            const azimuths = row.Azimuths.toString().split(',').map(Number);
+            const techs = row.Tech.toString().split(',').map(t => t.trim().toUpperCase());
+
+            var marker = L.circleMarker([lat, lon], { radius: 5, color: '#000', fillColor: '#fff', fillOpacity: 1 });
+            marker.bindPopup(`<b>Site: ${id}</b><br>Tech: ${row.Tech}`);
+            
+            // Add marker to all relevant tech layers
+            techs.forEach(t => { if(techLayers[t]) marker.addTo(techLayers[t]); });
+            allMarkers[id] = { marker, lat, lon };
+
+            azimuths.forEach(azi => {
+                techs.forEach(t => {
+                    if(config[t]) drawSector(lat, lon, azi, config[t].color, config[t].radius, techLayers[t]);
+                });
+            });
+        });
+    }
+
+    function drawSector(lat, lon, azi, color, radius, layer) {
+        const points = [[lat, lon]];
+        const beam = 65;
+        for (let i = (azi - beam/2); i <= (azi + beam/2); i += 5) {
+            const rad = (90 - i) * (Math.PI / 180);
+            const pLat = lat + (radius / 111320) * Math.sin(rad);
+            const pLon = lon + (radius / (111320 * Math.cos(lat * Math.PI / 180))) * Math.cos(rad);
+            points.push([pLat, pLon]);
+        }
+        points.push([lat, lon]);
+        L.polygon(points, { color: color, weight: 1, fillOpacity: 0.2 }).addTo(layer);
+    }
+
+    function searchSite() {
+        const val = document.getElementById('siteSearch').value.toUpperCase();
+        if (allMarkers[val]) {
+            map.setView([allMarkers[val].lat, allMarkers[val].lon], 15);
+            allMarkers[val].marker.openPopup();
+        }
+    }
+
+    function exportKML() {
+        if(siteDataList.length === 0) return alert("No data to export!");
+        let kml = `<?xml version="1.0" encoding="UTF-8"?>
+<kml xmlns="http://www.opengis.net/kml/2.2">
+<Document><name>VI Network Bihar</name>`;
+        
+        siteDataList.forEach(row => {
+            kml += `<Placemark>
+                <name>${row.Site_ID}</name>
+                <description>Tech: ${row.Tech} | Bands: ${row.Bands}</description>
+                <Point><coordinates>${row.Long},${row.Lat},0</coordinates></Point>
+            </Placemark>`;
+        });
+
+        kml += `</Document></kml>`;
+        const blob = new Blob([kml], {type: 'application/vnd.google-earth.kml+xml'});
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement("a");
+        a.href = url;
+        a.download = "VI_Bihar_Network.kml";
+        a.click();
+    }
+</script>
+</body>
+</html>
