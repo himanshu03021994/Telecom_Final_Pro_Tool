@@ -1,37 +1,53 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
-    <title>Telecom Network Analyzer - Pro</title>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>VI Network Planner - Bihar Circle</title>
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
     <style>
-        #map { height: 600px; width: 100%; border-radius: 10px; margin-top: 10px; }
-        body { font-family: 'Segoe UI', sans-serif; margin: 20px; background: #f4f7f6; }
-        .panel { background: white; padding: 20px; border-radius: 10px; box-shadow: 0 4px 10px rgba(0,0,0,0.1); }
-        .controls { display: flex; gap: 15px; align-items: center; flex-wrap: wrap; }
-        .search-box { display: flex; gap: 5px; }
-        input { padding: 10px; border: 1px solid #ddd; border-radius: 5px; }
-        button { padding: 10px 15px; background: #28a745; color: white; border: none; border-radius: 5px; cursor: pointer; font-weight: bold; }
-        button.search-btn { background: #007bff; }
-        .legend { background: white; padding: 10px; border-radius: 5px; box-shadow: 0 0 10px rgba(0,0,0,0.2); line-height: 20px; }
-        .instruction { color: #666; font-size: 0.9em; margin-top: 10px; }
+        :root {
+            --vi-red: #e31837;
+            --vi-yellow: #ffcc00;
+        }
+        body { font-family: 'Segoe UI', Arial, sans-serif; margin: 0; background: #f8f9fa; display: flex; flex-direction: column; height: 100vh; }
+        .header { background: white; padding: 15px 25px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); z-index: 1000; }
+        h2 { margin: 0 0 15px 0; color: var(--vi-red); display: flex; align-items: center; gap: 10px; }
+        .controls { display: flex; gap: 20px; align-items: flex-end; flex-wrap: wrap; }
+        .control-group { display: flex; flex-direction: column; gap: 5px; }
+        label { font-size: 0.85rem; font-weight: bold; color: #555; }
+        input[type="file"], input[type="text"] { padding: 8px; border: 1px solid #ccc; border-radius: 4px; }
+        button { padding: 9px 18px; border: none; border-radius: 4px; cursor: pointer; font-weight: bold; transition: 0.2s; }
+        .btn-search { background: var(--vi-red); color: white; }
+        .btn-export { background: #007bff; color: white; }
+        .btn-search:hover, .btn-export:hover { opacity: 0.9; }
+        #map { flex-grow: 1; width: 100%; }
+        .info-bar { background: #fff3f3; padding: 8px 25px; font-size: 0.85rem; color: #666; border-bottom: 1px solid #eee; }
+        .legend { background: white; padding: 10px; border-radius: 4px; border: 1px solid #ccc; line-height: 1.5; font-size: 0.75rem; }
     </style>
 </head>
 <body>
 
-<div class="panel">
-    <h3>📡 Telecom Network Pro Tool (Distance & Nearest Site)</h3>
+<div class="header">
+    <h2>📡 VI Network Planning Tool</h2>
     <div class="controls">
-        <div>
-            <label><b>1. Upload Excel: </b></label>
+        <div class="control-group">
+            <label>1. Upload Master Site Data</label>
             <input type="file" id="uploadExcel" accept=".xlsx, .xls">
         </div>
-        <div class="search-box">
-            <input type="text" id="siteSearch" placeholder="Search Site ID...">
-            <button class="search-btn" onclick="searchSite()">Search</button>
+        <div class="control-group">
+            <label>2. Find Site ID</label>
+            <div style="display: flex; gap: 5px;">
+                <input type="text" id="siteSearch" placeholder="e.g. PAT1234">
+                <button class="btn-search" onclick="searchSite()">Search</button>
+            </div>
         </div>
-        <button onclick="exportDistanceReport()" style="background: #17a2b8;">Export Report</button>
+        <button class="btn-export" onclick="exportDistanceReport()">Export Distance Report</button>
     </div>
-    <div class="instruction">💡 <b>Tip:</b> मैप पर कहीं भी <b>Double Click</b> करें नज़दीकी साइट ढूंढने के लिए।</div>
+</div>
+
+<div class="info-bar">
+    💡 <b>Bihar Planning Tip:</b> Double-click on map to find nearest site. Distance logic based on 2G (2.5km), 4G 1800 (2.3km), 4G 2100 (2.0km), 4G 2500 (1.5km), 5G 3300 (1.0km).
 </div>
 
 <div id="map"></div>
@@ -40,129 +56,20 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 
 <script>
-    var map = L.map('map').setView([25.5664, 86.35588], 12);
-    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(map);
+    // Initialize Map on Bihar/Patna coordinates
+    var map = L.map('map', { doubleClickZoom: false }).setView([25.5941, 85.1376], 11);
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+        attribution: '© OpenStreetMap'
+    }).addTo(map);
 
     var allMarkers = {};
-    var siteDataList = []; // रिपोर्ट एक्सपोर्ट के लिए
+    var siteDataList = [];
     var sectorLayers = L.layerGroup().addTo(map);
 
+    // Final Coverage Concepts as defined
     const bandSettings = {
-        "1800": { color: '#3498db', radius: 2500, label: '1800 (2.5Km)' },
-        "2100": { color: '#e67e22', radius: 1500, label: '2100 (1.5Km)' },
-        "2500": { color: '#2ecc71', radius: 1000, label: '2500 (1Km)' }
-    };
-
-    // Haversine Formula: दो पॉइंट्स के बीच की दूरी (KM)
-    function getDistance(lat1, lon1, lat2, lon2) {
-        var R = 6371; 
-        var dLat = (lat2-lat1) * Math.PI / 180;
-        var dLon = (lon2-lon1) * Math.PI / 180;
-        var a = Math.sin(dLat/2) * Math.sin(dLat/2) +
-                Math.cos(lat1*Math.PI/180) * Math.cos(lat2*Math.PI/180) * Math.sin(dLon/2) * Math.sin(dLon/2);
-        return R * (2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a)));
-    }
-
-    // Excel Upload Logic
-    document.getElementById('uploadExcel').addEventListener('change', function(e) {
-        var reader = new FileReader();
-        reader.onload = function(e) {
-            var data = new Uint8Array(e.target.result);
-            var workbook = XLSX.read(data, {type: 'array'});
-            var json = XLSX.utils.sheet_to_json(workbook.Sheets[workbook.SheetNames[0]]);
-            siteDataList = json;
-            processNetworkData(json);
-        };
-        reader.readAsArrayBuffer(e.target.files[0]);
-    });
-
-    function processNetworkData(data) {
-        sectorLayers.clearLayers();
-        allMarkers = {};
-        data.forEach(row => {
-            var id = row.Site_ID.toUpperCase();
-            var lat = parseFloat(row.Lat);
-            var lon = parseFloat(row.Long);
-            var azimuths = row.Azimuths.toString().split(',').map(Number);
-            var bands = row.Bands.toString().split(',');
-
-            var marker = L.marker([lat, lon]).addTo(sectorLayers).bindPopup("<b>Site: " + id + "</b>");
-            allMarkers[id] = {marker: marker, lat: lat, lon: lon};
-
-            azimuths.forEach(azi => {
-                bands.forEach(band => {
-                    var s = bandSettings[band.trim()];
-                    if(s) drawSector(lat, lon, azi, s.color, s.radius);
-                });
-            });
-        });
-        alert(data.length + " Sites Loaded Successfully!");
-    }
-
-    function drawSector(lat, lon, azi, color, radius) {
-        var points = [[lat, lon]];
-        var beam = 65;
-        for (var i = azi-(beam/2); i <= azi+(beam/2); i+=5) {
-            var rad = i * (Math.PI/180);
-            var x = lat + (radius/111320) * Math.cos(rad);
-            var y = lon + (radius/(111320*Math.cos(lat*(Math.PI/180)))) * Math.sin(rad);
-            points.push([x, y]);
-        }
-        points.push([lat, lon]);
-        L.polygon(points, {color: color, fillOpacity: 0.15, weight: 1}).addTo(sectorLayers);
-    }
-
-    // Nearest Site on Double Click
-    map.on('dblclick', function(e) {
-        var clickLat = e.latlng.lat;
-        var clickLon = e.latlng.lng;
-        var nearest = null;
-        var minDocs = Infinity;
-
-        for (var id in allMarkers) {
-            var d = getDistance(clickLat, clickLon, allMarkers[id].lat, allMarkers[id].lon);
-            if (d < minDocs) {
-                minDocs = d;
-                nearest = id;
-            }
-        }
-
-        if(nearest) {
-            L.popup().setLatLng(e.latlng)
-                .setContent("<b>Nearest Site:</b> " + nearest + "<br><b>Distance:</b> " + minDocs.toFixed(2) + " KM")
-                .openOn(map);
-        }
-    });
-
-    function searchSite() {
-        var val = document.getElementById('siteSearch').value.toUpperCase();
-        if(allMarkers[val]) {
-            map.setView(allMarkers[val].marker.getLatLng(), 15);
-            allMarkers[val].marker.openPopup();
-        } else { alert("Site Not Found!"); }
-    }
-
-    // Export Distance Report
-    function exportDistanceReport() {
-        if(siteDataList.length === 0) return alert("Please upload data first!");
-        let csvContent = "data:text/csv;charset=utf-8,Site_A,Site_B,Distance_KM\n";
-        
-        // Example: Calculate distance between consecutive sites in Excel
-        for(let i=0; i < siteDataList.length - 1; i++) {
-            let s1 = siteDataList[i];
-            let s2 = siteDataList[i+1];
-            let d = getDistance(s1.Lat, s1.Long, s2.Lat, s2.Long);
-            csvContent += `${s1.Site_ID},${s2.Site_ID},${d.toFixed(3)}\n`;
-        }
-        
-        var encodedUri = encodeURI(csvContent);
-        var link = document.createElement("a");
-        link.setAttribute("href", encodedUri);
-        link.setAttribute("download", "Distance_Report.csv");
-        document.body.appendChild(link);
-        link.click();
-    }
-
-</script>
-</body>
-</html>
+        "2G-1800": { color: '#2c3e50', radius: 2500, label: '2G 1800' },
+        "1800":    { color: '#3498db', radius: 2300, label: '4G 1800' },
+        "2100":    { color: '#f39c12', radius: 2000, label: '4G 2100' },
+        "2500":    { color: '#27ae60', radius: 1500, label: '4G 2500' },
+        "3300":
