@@ -58,7 +58,7 @@
     };
 
     var map = L.map('map').setView([25.5941, 85.1376], 11);
-    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { attribution: '© VI Bihar Circle' }).addTo(map);
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { attribution: '©  Bihar Circle' }).addTo(map);
 
     var techLayers = {
         "2G": L.layerGroup().addTo(map),
@@ -159,9 +159,10 @@
         });
         kml += `</Document></kml>`;
         const blob = new Blob([kml], {type: 'application/vnd.google-earth.kml+xml'});
-        const a = document.createElement("a"); a.href = URL.createObjectURL(blob); a.download = "VI_Bihar_Network.kml"; a.click();
+        const a = document.createElement("a"); a.href = URL.createObjectURL(blob); a.download = "Bihar_Network.kml"; a.click();
     }
 </script>
 </body>
 </html>
+
 
