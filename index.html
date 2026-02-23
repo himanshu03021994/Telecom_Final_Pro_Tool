@@ -3,10 +3,10 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
-    <title>Network Planner Pro </title>
+    <title>Site Plotter Pro - Coverage & KML</title>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.css" />
     <style>
-        :root { --vi-red: #e31837; }
+        :root { --primary-color: #2c3e50; --accent-color: #3498db; }
         body { font-family: 'Segoe UI', Arial, sans-serif; margin: 0; display: flex; flex-direction: column; height: 100vh; background: #f4f4f9; }
         .header { background: white; padding: 10px 20px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); z-index: 1001; }
         .controls { display: flex; gap: 15px; align-items: flex-end; flex-wrap: wrap; }
@@ -14,24 +14,24 @@
         .control-group { display: flex; flex-direction: column; gap: 4px; }
         label { font-size: 11px; font-weight: bold; color: #666; }
         input { padding: 8px; border: 1px solid #ccc; border-radius: 4px; font-size: 13px; }
-        button { padding: 9px 15px; border: none; border-radius: 4px; cursor: pointer; font-weight: bold; }
-        .btn-search { background: var(--vi-red); color: white; }
-        .btn-kml { background: #0F9D58; color: white; }
-        .stats { font-size: 12px; font-weight: bold; color: var(--vi-red); margin-left: auto; }
-        /* Professional Layer Control */
-        .leaflet-control-layers { border: 2px solid var(--vi-red) !important; border-radius: 8px !important; }
+        button { padding: 9px 15px; border: none; border-radius: 4px; cursor: pointer; font-weight: bold; transition: 0.2s; }
+        .btn-search { background: var(--primary-color); color: white; }
+        .btn-kml { background: #27ae60; color: white; }
+        .btn-search:hover, .btn-kml:hover { opacity: 0.9; }
+        .stats { font-size: 12px; font-weight: bold; color: var(--primary-color); margin-left: auto; }
+        .leaflet-control-layers { border-radius: 8px !important; box-shadow: 0 2px 10px rgba(0,0,0,0.2) !important; }
     </style>
 </head>
 <body>
 
 <div class="header">
     <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:10px;">
-        <h2 style="margin:0; color:var(--vi-red); font-size: 1.2rem;">📡 VI Planner Pro</h2>
+        <h2 style="margin:0; color:var(--primary-color); font-size: 1.2rem;">📡 Site Plotter Pro</h2>
         <div id="siteCount" class="stats">Sites Loaded: 0</div>
     </div>
     <div class="controls">
         <div class="control-group">
-            <label>UPLOAD DATA (EXCEL)</label>
+            <label>DATA SOURCE (EXCEL)</label>
             <input type="file" id="uploadExcel" accept=".xlsx, .xls">
         </div>
         <div style="display:flex; gap:5px;">
@@ -48,7 +48,7 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 
 <script>
-    // Configuration based on your Requirement
+    // Configurable coverage concepts
     const config = {
         "2G-1800": { r: 2500, color: '#7f8c8d' },
         "4G-1800": { r: 2300, color: '#3498db' },
@@ -58,7 +58,9 @@
     };
 
     var map = L.map('map').setView([25.5941, 85.1376], 11);
-    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { attribution: '©  Bihar Circle' }).addTo(map);
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { 
+        attribution: '© OpenStreetMap' 
+    }).addTo(map);
 
     var techLayers = {
         "2G": L.layerGroup().addTo(map),
@@ -87,6 +89,8 @@
         allMarkers = {};
 
         siteData.forEach(row => {
+            if(!row.Site_ID || !row.Lat || !row.Long) return;
+
             const id = row.Site_ID.toString().toUpperCase();
             const lat = parseFloat(row.Lat);
             const lon = parseFloat(row.Long);
@@ -95,8 +99,9 @@
             const techList = row.Tech.toString().toUpperCase().split(',').map(t => t.trim());
             const bandList = row.Bands.toString().split(',').map(b => b.trim());
 
-            var m = L.circleMarker([lat, lon], { radius: 6, color: '#000', fillColor: '#fff', fillOpacity: 1 });
-            m.bindPopup(`<b>${id}</b><br>Height: ${h}m<br>Tech: ${row.Tech}`);
+            var m = L.circleMarker([lat, lon], { radius: 6, color: '#000', fillColor: '#fff', fillOpacity: 1, weight: 2 });
+            m.bindPopup(`<b>Site ID: ${id}</b><br>Height: ${h}m<br>Tech: ${row.Tech}<br>Bands: ${row.Bands}`);
+            
             techList.forEach(t => { if(techLayers[t]) m.addTo(techLayers[t]); });
             allMarkers[id] = { m, lat, lon };
 
@@ -104,12 +109,14 @@
                 techList.forEach(t => {
                     bandList.forEach(b => {
                         let key = (t === "2G" && b === "1800") ? "2G-1800" : (t + "-" + b);
-                        if (!config[key]) key = b; // Fallback to Band
+                        if (!config[key]) key = b;
                         const rule = config[key] || { r: 2000, color: '#9b59b6' };
                         
                         const adjustedR = rule.r * Math.sqrt(h / 30);
                         const points = [[lat, lon]];
-                        for (let i = (parseInt(azi)-32.5); i <= (parseInt(azi)+32.5); i+=5) {
+                        const beamWidth = 65; 
+                        
+                        for (let i = (parseInt(azi) - (beamWidth/2)); i <= (parseInt(azi) + (beamWidth/2)); i += 5) {
                             const rad = (90 - i) * (Math.PI / 180);
                             points.push([
                                 lat + (adjustedR / 111320) * Math.sin(rad),
@@ -117,7 +124,7 @@
                             ]);
                         }
                         points.push([lat, lon]);
-                        L.polygon(points, { color: rule.color, weight: 1.5, fillOpacity: 0.15 }).addTo(techLayers[t]);
+                        L.polygon(points, { color: rule.color, weight: 1, fillOpacity: 0.15 }).addTo(techLayers[t]);
                     });
                 });
             });
@@ -130,12 +137,17 @@
         if (allMarkers[id]) {
             map.setView([allMarkers[id].lat, allMarkers[id].lon], 16);
             allMarkers[id].m.openPopup();
-        }
+        } else { alert("Site not found!"); }
     }
 
     function exportKML() {
-        if(siteData.length === 0) return alert("Upload data first!");
-        let kml = `<?xml version="1.0" encoding="UTF-8"?><kml xmlns="http://www.opengis.net/kml/2.2"><Document><name>VI Bihar Network</name>`;
+        if(siteData.length === 0) return alert("Please upload data first!");
+        
+        let kml = `<?xml version="1.0" encoding="UTF-8"?>
+<kml xmlns="http://www.opengis.net/kml/2.2">
+<Document>
+    <name>Network Site Export</name>`;
+        
         siteData.forEach(row => {
             const h = parseFloat(row.Antenna_Height) || 30;
             const azi = row.Azimuths.toString().split(',');
@@ -145,24 +157,40 @@
             azi.forEach(a => {
                 tech.forEach(t => {
                     band.forEach(b => {
-                        const rule = config[`${t.trim()}-${b.trim()}`] || config[b.trim()] || { r: 2000 };
+                        const key = (t.trim() === "2G" && b.trim() === "1800") ? "2G-1800" : (`${t.trim()}-${b.trim()}`);
+                        const rule = config[key] || config[b.trim()] || { r: 2000 };
                         const r = rule.r * Math.sqrt(h / 30);
                         let coords = "";
-                        for (let i = (parseInt(a)-32.5); i <= (parseInt(a)+32.5); i+=5) {
+                        const beam = 65;
+
+                        for (let i = (parseInt(a) - (beam/2)); i <= (parseInt(a) + (beam/2)); i += 5) {
                             const rad = (90 - i) * (Math.PI / 180);
-                            coords += `${parseFloat(row.Long) + (r / (111320 * Math.cos(parseFloat(row.Lat) * Math.PI / 180))) * Math.cos(rad)},${parseFloat(row.Lat) + (r / 111320) * Math.sin(rad)},${h} `;
+                            const pLat = parseFloat(row.Lat) + (r / 111320) * Math.sin(rad);
+                            const pLon = parseFloat(row.Long) + (r / (111320 * Math.cos(parseFloat(row.Lat) * Math.PI / 180))) * Math.cos(rad);
+                            coords += `${pLon},${pLat},${h} `;
                         }
-                        kml += `<Placemark><name>${row.Site_ID}_${t.trim()}_${b.trim()}</name><Polygon><altitudeMode>relativeToGround</altitudeMode><outerBoundaryIs><LinearRing><coordinates>${row.Long},${row.Lat},${h} ${coords} ${row.Long},${row.Lat},${h}</coordinates></LinearRing></outerBoundaryIs></Polygon></Placemark>`;
+                        
+                        kml += `
+    <Placemark>
+        <name>${row.Site_ID}_${t.trim()}_${b.trim()}_${a.trim()}deg</name>
+        <styleUrl>#polyStyle</styleUrl>
+        <Polygon>
+            <altitudeMode>relativeToGround</altitudeMode>
+            <outerBoundaryIs><LinearRing><coordinates>${row.Long},${row.Lat},${h} ${coords} ${row.Long},${row.Lat},${h}</coordinates></LinearRing></outerBoundaryIs>
+        </Polygon>
+    </Placemark>`;
                     });
                 });
             });
         });
+        
         kml += `</Document></kml>`;
         const blob = new Blob([kml], {type: 'application/vnd.google-earth.kml+xml'});
-        const a = document.createElement("a"); a.href = URL.createObjectURL(blob); a.download = "Bihar_Network.kml"; a.click();
+        const a = document.createElement("a"); 
+        a.href = URL.createObjectURL(blob); 
+        a.download = "Network_Sectors.kml"; 
+        a.click();
     }
 </script>
 </body>
 </html>
-
-
